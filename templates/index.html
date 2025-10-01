@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>{{ get_config('CHATAPP_TITLE') }}</h1>
+<p>{{ get_config('CHATAPP_DESCRIPTION') }}</p>
+<ul>
+    <li><a href="{{ url_for('talks') }}">Talks</a></li>
+    <li><a href="{{ url_for('calendar') }}">Calendar</a></li>
+</ul>
+{% endblock %}
