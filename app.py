@@ -7,12 +7,14 @@ from collections import OrderedDict
 from flask import Flask, render_template, request, url_for
 import flask_bootstrap
 from flask_sqlalchemy import SQLAlchemy
+from flask_session import Session
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms.fields import *
 from wtforms.validators import DataRequired, Length
 from sqlalchemy import ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped, mapped_column
+from cachelib.file import FileSystemCache
 import os
 import json
 import base64
@@ -66,6 +68,7 @@ class User(ChatMatch):
     email: Mapped[str]
     nick: Mapped[str]
     magic: Mapped[str]
+    newmagic: Mapped[str]
     create_time: Mapped[int]
     edit_time: Mapped[int | None]
     lastuse_time: Mapped[int | None]
@@ -376,16 +379,21 @@ def send_mail(recipient, message):
 
 
 def create_app(test_config=None, debug=False):
-    global app, bootstrap, db
+    global app, bootstrap, db, session
     ## create and configure the app
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
         SECRET_KEY=os.getenv("SECRET_KEY", "dev"),
-        TESTING=bool(os.getenv("TESTING",os.getenv("DEBUG"))),
+        TESTING=bool(os.getenv("TESTING", os.getenv("DEBUG"))),
         SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URI", "sqlite:///dev.sqlite3"),
-        SQLALCHEMY_ECHO=bool(os.getenv("DATABASE_ECHO",os.getenv("DEBUG"))),
+        SQLALCHEMY_ECHO=bool(os.getenv("DATABASE_ECHO", os.getenv("DEBUG"))),
         BOOTSTRAP_BOOTSWATCH_THEME=os.getenv("THEME", "pulse"),
         BOOTSTRAP_SERVE_LOCAL=True,
+        SESSION_TYPE="cachelib",
+        SESSION_SERIALIZATION_FORMAT="json",
+        SESSION_CACHELIB=FileSystemCache(
+            threshold=500, cache_dir=os.getenv("SESSION_DIR", "sessions")
+        ),
         CHATMATCH_NAME=os.getenv("CHATMATCH_NAME", "ChatMatch"),
         CHATMATCH_SHORT_NAME=os.getenv(
             "CHATMATCH_SHORT_NAME", os.getenv("CHATMATCH_NAME", "ChatMatch")
@@ -394,7 +402,10 @@ def create_app(test_config=None, debug=False):
         CHATMATCH_THEME_COLOR=os.getenv("CHATMATCH_THEME_COLOR", "#ff5555"),
         CHATMATCH_BACKGROUND_COLOR=os.getenv("CHATMATCH_BACKGROUND_COLOR", "#5555ff"),
     )
-    app.config["CHATMATCH_DESCRIPTION"] = os.getenv('CHATMATCH_DESCRIPTION', "App to match discussion participants to topics and timeslots")
+    app.config["CHATMATCH_DESCRIPTION"] = os.getenv(
+        "CHATMATCH_DESCRIPTION",
+        "App to match discussion participants to topics and timeslots",
+    )
     app.config["CHATMATCH_CSS"] = """
     pre {
       background: #ddd;
@@ -411,6 +422,7 @@ def create_app(test_config=None, debug=False):
     db = SQLAlchemy(app, model_class=ChatMatch)
     app.jinja_env.globals.update(get_config=get_config, list_themes=list_themes)
     csrf = CSRFProtect(app)
+    session = Session(app)
 
     app.add_url_rule("/", "index", index)
     app.add_url_rule("/register", "register", register, methods=["GET", "POST"])
@@ -454,7 +466,7 @@ def create_app(test_config=None, debug=False):
         topic.description = "This is the default topic. Usually not used."
         topic.hidden = False
         topic.min_users = 3
-        topic.max_users = 3
+        topic.max_users = 5
         topic.creator = user.id
         topic.create_time = int(datetime.datetime.now().timestamp())
         db.session.add(topic)
@@ -541,4 +553,4 @@ def create_app(test_config=None, debug=False):
 if __name__ == "__main__":
     global app
     app = create_app()
-    app.run(debug=bool(os.getenv('DEBUG')))
+    app.run(debug=bool(os.getenv("DEBUG")))
