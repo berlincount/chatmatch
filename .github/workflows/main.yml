@@ -33,4 +33,5 @@ jobs:
       with:
         context: .
         file: Dockerfile  # Ensure this path is correct
+        tags: latest
         push: true
