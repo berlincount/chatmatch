@@ -239,7 +239,7 @@ def calendar():
     # prepare matches
     matches = dict()
     for row in match_rows:
-        if app.debug and 1:
+        if app.debug and 0:
             pprint.pp(row)
             pprint.pp(type(row.Match))
             pprint.pp(row.Match.__dict__)
@@ -252,7 +252,7 @@ def calendar():
         matches[row.Match.slot]["confirmed"] += 1 if row.Match.confirmed else 0
         matches[row.Match.slot]["cancelled"] += 1 if row.Match.cancel_time else 0
 
-    if app.debug and 1:
+    if app.debug and 0:
         pprint.pp(matches)
 
     # fetch Slots and Topic
@@ -320,7 +320,7 @@ def calendar():
         )
         safe_columns.append(day)
 
-    if app.debug:
+    if app.debug and 0:
         pprint.pp(titles)
         pprint.pp(days)
 
@@ -381,9 +381,9 @@ def create_app(test_config=None, debug=False):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
         SECRET_KEY=os.getenv("SECRET_KEY", "dev"),
-        TESTING=os.getenv("TESTING"),
+        TESTING=bool(os.getenv("TESTING",os.getenv("DEBUG"))),
         SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URI", "sqlite:///dev.sqlite3"),
-        SQLALCHEMY_ECHO=bool(os.getenv("DATABASE_ECHO")),
+        SQLALCHEMY_ECHO=bool(os.getenv("DATABASE_ECHO",os.getenv("DEBUG"))),
         BOOTSTRAP_BOOTSWATCH_THEME=os.getenv("THEME", "pulse"),
         BOOTSTRAP_SERVE_LOCAL=True,
         CHATMATCH_NAME=os.getenv("CHATMATCH_NAME", "ChatMatch"),
@@ -543,4 +543,4 @@ def create_app(test_config=None, debug=False):
 if __name__ == "__main__":
     global app
     app = create_app()
-    app.run(debug=True)
+    app.run(debug=bool(os.getenv('DEBUG')))
