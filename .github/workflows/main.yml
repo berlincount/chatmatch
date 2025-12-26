@@ -33,5 +33,5 @@ jobs:
       with:
         context: .
         file: Dockerfile  # Ensure this path is correct
-        tags: latest
+        tags: ghcr.io/berlincount/chatmatch:latest
         push: true
