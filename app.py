@@ -25,37 +25,9 @@ import datetime
 # from sqlalchemy import Integer, String
 # from sqlalchemy import ForeignKey, UniqueConstraint
 
-app = Flask(__name__)
-app.secret_key = "dev"
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-app.config["TESTING"] = True
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///dev.sqlite3"
-app.config["SQLALCHEMY_ECHO"] = True
-app.config["BOOTSTRAP_BOOTSWATCH_THEME"] = "cyborg"
-app.config["BOOTSTRAP_SERVE_LOCAL"] = True
-app.config["CHATAPP_NAME"] = "ChatMatch"
-app.config["CHATAPP_SHORT_NAME"] = "ChatMatch"
-app.config["CHATAPP_TITLE"] = "ChatMatch"
-app.config["CHATAPP_DESCRIPTION"] = (
-    "App to match discussion participants to topics and timeslots"
-)
-app.config["CHATAPP_THEME_COLOR"] = "#ff5555"
-app.config["CHATAPP_BACKGROUND_COLOR"] = "#5555ff"
-app.config["CHATAPP_CSS"] = """
-    pre {
-      background: #ddd;
-      padding: 10px;
-    }
-    h2 {
-      margin-top: 20px;
-    }
-    footer {
-      margin: 20px;
-    }
-"""
-
 
 def get_config(key):
+    global app
     return app.config[key]
 
 
@@ -81,19 +53,11 @@ def list_themes():
     return json.dumps(themes)
 
 
-app.jinja_env.globals.update(get_config=get_config, list_themes=list_themes)
-
-
 class ChatMatch(DeclarativeBase):
     pass
 
 
-bootstrap = flask_bootstrap.Bootstrap5(app)
-db = SQLAlchemy(app, model_class=ChatMatch)
-csrf = CSRFProtect(app)
-
-
-class User(db.Model):
+class User(ChatMatch):
     __tablename__ = "user_table"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -110,7 +74,7 @@ class User(db.Model):
     )
 
 
-class Topic(db.Model):
+class Topic(ChatMatch):
     __tablename__ = "topic_table"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -127,7 +91,7 @@ class Topic(db.Model):
     __table_args__ = (UniqueConstraint("topic"),)
 
 
-class Slot(db.Model):
+class Slot(ChatMatch):
     __tablename__ = "slot_table"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -140,7 +104,7 @@ class Slot(db.Model):
     edit_time: Mapped[int | None]
 
 
-class Match(db.Model):
+class Match(ChatMatch):
     __tablename__ = "match_table"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -152,114 +116,10 @@ class Match(db.Model):
     cancel_time: Mapped[int | None]
 
 
-with app.app_context():
-    # delete database contents
-    db.drop_all()
-
-    # create database structures
-    db.create_all()
-
-    # system user
-    user = User()
-    user.email = "system"
-    user.nick = "system"
-    user.magic = base64.b64encode(os.urandom(32))
-    user.create_time = int(datetime.datetime.now().timestamp())
-    db.session.add(user)
-    db.session.commit()
-
-    # default topic (hideable)
-    topic = Topic()
-    topic.topic = "Default"
-    topic.description = "This is the default topic. Usually not used."
-    topic.hidden = False
-    topic.min_users = 3
-    topic.max_users = 3
-    topic.creator = user.id
-    topic.create_time = int(datetime.datetime.now().timestamp())
-    db.session.add(topic)
-    db.session.commit()
-
-    # default slots (hardcoded for 39C3)
-    for day in range(27, 30):
-        if day == 27:
-            mintime = 13
-            maxtime = 19
-        elif day == 30:
-            mintime = 11
-            maxtime = 14
-        else:
-            mintime = 11
-            maxtime = 18
-
-        for time in range(mintime, maxtime + 1):
-            # first half hour
-            slot = Slot()
-            slot.topic = topic.id
-            slot.start_time = int(
-                datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
-            )
-            slot.duration = 1800
-            slot.creator = user.id
-            slot.create_time = int(datetime.datetime.now().timestamp())
-            db.session.add(slot)
-
-            # second half hour
-            if not (day == 27 and time == 19):
-                slot = Slot()
-                slot.topic = topic.id
-                slot.start_time = int(
-                    datetime.datetime(2025, 12, day, time, 30, 0).timestamp()
-                )
-                slot.duration = 1800
-                slot.creator = user.id
-                slot.create_time = int(datetime.datetime.now().timestamp())
-                db.session.add(slot)
-        db.session.commit()
-
-    # test match
-    match = Match()
-    match.slot = 1
-    match.user = user.id
-    match.create_time = int(datetime.datetime.now().timestamp())
-    match.confirmed = False
-    db.session.add(match)
-    db.session.commit()
-
-    #    - Day 1 (27.12.2025): Slots 1:00pm–7:30pm, selectable every 30 minutes
-    #    - Days 2/3 (28./29.12.): 11:00am–7:00pm, every 30 minutes
-    #    - Day 4 (30.12.2025): 11:00am–3:00pm, every 30 minutes
-    # for i in range(20):
-    #     url = 'mailto:x@t.me'
-    #     if i % 7 == 0:
-    #         url = 'www.t.me'
-    #     elif i % 7 == 1:
-    #         url = 'https://t.me'
-    #     elif i % 7 == 2:
-    #         url = 'http://t.me'
-    #     elif i % 7 == 3:
-    #         url = 'http://t'
-    #     elif i % 7 == 4:
-    #         url = 'http://'
-    #     elif i % 7 == 5:
-    #         url = 'x@t.me'
-    #     m = Message(
-    #         text=f'Message {i+1} {url}',
-    #         author=f'Author {i+1}',
-    #         create_time=4321*(i+1)
-    #         )
-    #     if i % 2:
-    #         m.category = MyCategory.CAT2
-    #     if i % 4:
-    #         m.draft = True
-    #     db.session.add(m)
-    db.session.commit()
-
-
 class RegisterButtonForm(FlaskForm):
     submit = SubmitField()
 
-@app.route("/")
+
 def index():
     return render_template("index.html")
 
@@ -275,7 +135,6 @@ class HelloForm(FlaskForm):
     submit = SubmitField()
 
 
-@app.route("/register", methods=["GET", "POST"])
 def register():
     form = UserForm()
     if form.validate_on_submit():
@@ -287,61 +146,6 @@ def register():
     )
 
 
-class BootswatchForm(FlaskForm):
-    """Form to test Bootswatch."""
-
-    # DO NOT EDIT! Use list_bootswatch.py to generate the Radiofield below.
-    theme_name = RadioField(
-        default="default",
-        choices=[
-            ("default", "none"),
-            ("brite", "Brite 5.3.5"),
-            ("cerulean", "Cerulean 5.3.5"),
-            ("cosmo", "Cosmo 5.3.5"),
-            ("cyborg", "Cyborg 5.3.5"),
-            ("darkly", "Darkly 5.3.5"),
-            ("flatly", "Flatly 5.3.5"),
-            ("journal", "Journal 5.3.5"),
-            ("litera", "Litera 5.3.5"),
-            ("lumen", "Lumen 5.3.5"),
-            ("lux", "Lux 5.3.5"),
-            ("materia", "Materia 5.3.5"),
-            ("minty", "Minty 5.3.5"),
-            ("morph", "Morph 5.3.5"),
-            ("pulse", "Pulse 5.3.5"),
-            ("quartz", "Quartz 5.3.5"),
-            ("sandstone", "Sandstone 5.3.5"),
-            ("simplex", "Simplex 5.3.5"),
-            ("sketchy", "Sketchy 5.3.5"),
-            ("slate", "Slate 5.3.5"),
-            ("solar", "Solar 5.3.5"),
-            ("spacelab", "Spacelab 5.3.5"),
-            ("superhero", "Superhero 5.3.5"),
-            ("united", "United 5.3.5"),
-            ("vapor", "Vapor 5.3.5"),
-            ("yeti", "Yeti 5.3.5"),
-            ("zephyr", "Zephyr 5.3.5"),
-        ],
-    )
-    submit = SubmitField()
-
-
-@app.route("/bootswatch", methods=["GET", "POST"])
-def test_bootswatch():
-    form = BootswatchForm()
-    if form.validate_on_submit():
-        if form.theme_name.data == "default":
-            app.config["BOOTSTRAP_BOOTSWATCH_THEME"] = None
-        else:
-            app.config["BOOTSTRAP_BOOTSWATCH_THEME"] = form.theme_name.data
-        flash(f"Render style has been set to {form.theme_name.data}.")
-    else:
-        if app.config["BOOTSTRAP_BOOTSWATCH_THEME"] is not None:
-            form.theme_name.data = app.config["BOOTSTRAP_BOOTSWATCH_THEME"]
-    return render_template("bootswatch.html", form=form)
-
-
-@app.route("/table")
 def test_table():
     page = request.args.get("page", 1, type=int)
     pagination = Message.query.paginate(page=page, per_page=10)
@@ -371,22 +175,22 @@ def test_table():
     )
 
 
-@app.route("/table/<int:message_id>/view")
 def view_message(message_id):
     message = Message.query.get(message_id)
     if message:
         return f'Viewing {message_id} with text "{message.text}". Return to <a href="/table">table</a>.'
     return f'Could not view message {message_id} as it does not exist. Return to <a href="/table">table</a>.'
 
-@app.route("/slot/<int:slot_id>")
+
 def slot_form(slot_id):
     slot = Slot.query.get(slot_id)
     if slot:
         return f'Viewing {slot_id} with confirmed "{slot.confirmed}". Return to <a href="/calendar">calendar</a>.'
     return f'Could not view slot {slot_id} as it does not exist. Return to <a href="/calendar">calendar</a>.'
 
-@app.route("/table/<int:message_id>/edit")
+
 def edit_message(message_id):
+    global db
     message = Message.query.get(message_id)
     if message:
         message.draft = not message.draft
@@ -395,8 +199,8 @@ def edit_message(message_id):
     return f'Message {message_id} did not exist and could therefore not be edited. Return to <a href="/table">table</a>.'
 
 
-@app.route("/table/<int:message_id>/delete", methods=["POST"])
 def delete_message(message_id):
+    global db
     message = Message.query.get(message_id)
     if message:
         db.session.delete(message)
@@ -405,23 +209,20 @@ def delete_message(message_id):
     return f'Message {message_id} did not exist and could therefore not be deleted. Return to <a href="/table">table</a>.'
 
 
-@app.route("/table/<int:message_id>/like")
 def like_message(message_id):
     return f'Liked the message {message_id}. Return to <a href="/table">table</a>.'
 
 
-@app.route("/table/new-message")
 def new_message():
     return 'Here is the new message page. Return to <a href="/table">table</a>.'
 
 
-@app.route("/topics")
 def topics():
     return render_template("topics.html")
 
 
-@app.route("/calendar")
 def calendar():
+    global app, db
     # get topic argument from URL
     topic_id = request.args.get("topic", 1, type=int)
 
@@ -501,11 +302,11 @@ def calendar():
             confirmed = matches[row.Slot.id]["confirmed"]
             cancelled = matches[row.Slot.id]["cancelled"]
 
-        days[day][slot] = "<a href=\"%s\">%d/%d, %d confirmed</a>" % (
+        days[day][slot] = '<a href="%s">%d/%d, %d confirmed</a>' % (
             url_for("slot_form", slot_id=row.Slot.id),
             matched - cancelled,
             topic.min_users,
-            confirmed
+            confirmed,
         )
 
     # create headings
@@ -540,24 +341,190 @@ def calendar():
         calendar=calendar,
         topic_title=topic.topic,
         topic_description=topic.description,
-        safe_columns=safe_columns
+        safe_columns=safe_columns,
     )
 
 
-@app.route("/admin")
 def admin():
     return render_template("admin.html")
 
 
-@app.route("/site.webmanifest")
 def site_webmanifest():
     return render_template("site.webmanifest")
 
 
-@app.route("/favicon.ico")
 def favicon():
     return send_from_directory("static", "favicon.ico")
 
 
+def create_app(test_config=None, debug=False):
+    global app, bootstrap, db
+    ## create and configure the app
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_mapping(
+        # FIXME
+        SECRET_KEY="dev",
+        # FIXME
+        TESTING=True,
+        # FIXME
+        SQLALCHEMY_DATABASE_URI="sqlite:///dev.sqlite3",
+        # FIXME
+        SQLALCHEMY_ECHO=True,
+        BOOTSTRAP_BOOTSWATCH_THEME="pulse",
+        BOOTSTRAP_SERVE_LOCAL=True,
+        CHATAPP_NAME="ChatMatch",
+        CHATAPP_SHORT_NAME="ChatMatch",
+        CHATAPP_TITLE="ChatMatch",
+        # CHATAPP_THEME_COLOR = "#ff5555",
+        # CHATAPP_BACKGROUND_COLOR = "#5555ff",
+    )
+    app.config["CHATAPP_DESCRIPTION"] = (
+        "App to match discussion participants to topics and timeslots"
+    )
+    app.config["CHATAPP_CSS"] = """
+    pre {
+      background: #ddd;
+      padding: 10px;
+    }
+    h2 {
+      margin-top: 20px;
+    }
+    footer {
+      margin: 20px;
+    }
+"""
+    bootstrap = flask_bootstrap.Bootstrap5(app)
+    db = SQLAlchemy(app, model_class=ChatMatch)
+    app.jinja_env.globals.update(get_config=get_config, list_themes=list_themes)
+    csrf = CSRFProtect(app)
+
+    app.add_url_rule("/", "index", index)
+    app.add_url_rule("/register", "register", register, methods=["GET", "POST"])
+    app.add_url_rule("/table", "test_table", test_table)
+    app.add_url_rule("/table/<int:message_id>/view", "view_message", view_message)
+    app.add_url_rule("/slot/<int:slot_id>", "slot_form", slot_form)
+    app.add_url_rule("/table/<int:message_id>/edit", "edit_message", edit_message)
+    app.add_url_rule(
+        "/table/<int:message_id>/delete",
+        "delete_message",
+        delete_message,
+        methods=["POST"],
+    )
+    app.add_url_rule("/table/<int:message_id>/like", "like_message", like_message)
+    app.add_url_rule("/table/new-message", "new_message", new_message)
+    app.add_url_rule("/topics", "topics", topics)
+    app.add_url_rule("/calendar", "calendar", calendar)
+    app.add_url_rule("/admin", "admin", admin)
+    app.add_url_rule("/site.webmanifest", "site_webmanifest", site_webmanifest)
+    app.add_url_rule("/favicon.ico", "favicon", favicon)
+
+    with app.app_context():
+        # delete database contents
+        db.drop_all()
+
+        # create database structures
+        db.create_all()
+
+        # system user
+        user = User()
+        user.email = "system"
+        user.nick = "system"
+        user.magic = base64.b64encode(os.urandom(32))
+        user.create_time = int(datetime.datetime.now().timestamp())
+        db.session.add(user)
+        db.session.commit()
+
+        # default topic (hideable)
+        topic = Topic()
+        topic.topic = "Default"
+        topic.description = "This is the default topic. Usually not used."
+        topic.hidden = False
+        topic.min_users = 3
+        topic.max_users = 3
+        topic.creator = user.id
+        topic.create_time = int(datetime.datetime.now().timestamp())
+        db.session.add(topic)
+        db.session.commit()
+
+        # default slots (hardcoded for 39C3)
+        for day in range(27, 30):
+            if day == 27:
+                mintime = 13
+                maxtime = 19
+            elif day == 30:
+                mintime = 11
+                maxtime = 14
+            else:
+                mintime = 11
+                maxtime = 18
+
+            for time in range(mintime, maxtime + 1):
+                # first half hour
+                slot = Slot()
+                slot.topic = topic.id
+                slot.start_time = int(
+                    datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
+                )
+                slot.duration = 1800
+                slot.creator = user.id
+                slot.create_time = int(datetime.datetime.now().timestamp())
+                db.session.add(slot)
+
+                # second half hour
+                if not (day == 27 and time == 19):
+                    slot = Slot()
+                    slot.topic = topic.id
+                    slot.start_time = int(
+                        datetime.datetime(2025, 12, day, time, 30, 0).timestamp()
+                    )
+                    slot.duration = 1800
+                    slot.creator = user.id
+                    slot.create_time = int(datetime.datetime.now().timestamp())
+                    db.session.add(slot)
+            db.session.commit()
+
+        # test match
+        match = Match()
+        match.slot = 1
+        match.user = user.id
+        match.create_time = int(datetime.datetime.now().timestamp())
+        match.confirmed = False
+        db.session.add(match)
+        db.session.commit()
+
+        #    - Day 1 (27.12.2025): Slots 1:00pm–7:30pm, selectable every 30 minutes
+        #    - Days 2/3 (28./29.12.): 11:00am–7:00pm, every 30 minutes
+        #    - Day 4 (30.12.2025): 11:00am–3:00pm, every 30 minutes
+        # for i in range(20):
+        #     url = 'mailto:x@t.me'
+        #     if i % 7 == 0:
+        #         url = 'www.t.me'
+        #     elif i % 7 == 1:
+        #         url = 'https://t.me'
+        #     elif i % 7 == 2:
+        #         url = 'http://t.me'
+        #     elif i % 7 == 3:
+        #         url = 'http://t'
+        #     elif i % 7 == 4:
+        #         url = 'http://'
+        #     elif i % 7 == 5:
+        #         url = 'x@t.me'
+        #     m = Message(
+        #         text=f'Message {i+1} {url}',
+        #         author=f'Author {i+1}',
+        #         create_time=4321*(i+1)
+        #         )
+        #     if i % 2:
+        #         m.category = MyCategory.CAT2
+        #     if i % 4:
+        #         m.draft = True
+        #     db.session.add(m)
+        db.session.commit()
+
+    return app
+
+
 if __name__ == "__main__":
+    global app
+    app = create_app()
     app.run(debug=True)

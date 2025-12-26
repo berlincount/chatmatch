@@ -2,3 +2,4 @@ flask>=3.1.2
 bootstrap-flask>=2.5.0
 flask-wtf>=1.2.2
 flask-sqlalchemy>=3.1.1
+gunicorn>=23.0.0
