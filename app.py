@@ -394,9 +394,7 @@ def create_app(test_config=None, debug=False):
         CHATMATCH_THEME_COLOR=os.getenv("CHATMATCH_THEME_COLOR", "#ff5555"),
         CHATMATCH_BACKGROUND_COLOR=os.getenv("CHATMATCH_BACKGROUND_COLOR", "#5555ff"),
     )
-    app.config["CHATMATCH_DESCRIPTION"] = (
-        "App to match discussion participants to topics and timeslots"
-    )
+    app.config["CHATMATCH_DESCRIPTION"] = os.getenv('CHATMATCH_DESCRIPTION', "App to match discussion participants to topics and timeslots")
     app.config["CHATMATCH_CSS"] = """
     pre {
       background: #ddd;
