@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
+{% from 'bootstrap5/form.html' import render_form, render_field, render_form_row %}
 
 {% block content %}
 <h1>{{ get_config('CHATAPP_TITLE') }}</h1>
 <p>{{ get_config('CHATAPP_DESCRIPTION') }}</p>
 <ul>
-    <li><a href="{{ url_for('talks') }}">Talks</a></li>
+    <li><a href="{{ url_for('topics') }}">Topics</a></li>
     <li><a href="{{ url_for('calendar') }}">Calendar</a></li>
+    <li><a href="{{ url_for('register') }}">Register User</a></li>
 </ul>
 {% endblock %}

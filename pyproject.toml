@@ -1,0 +1,12 @@
+[project]
+name = "chatmatch"
+version = "0.1.0"
+description = "App to match discussion participants to topics and timeslots"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bootstrap-flask>=2.5.0",
+    "flask>=3.1.2",
+    "flask-sqlalchemy>=3.1.1",
+    "flask-wtf>=1.2.2",
+]

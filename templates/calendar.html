@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% from 'bootstrap5/table.html' import render_table %}
+
+{% block content %}
+<h3>{{ topic_title }}</h3>
+<h4>{{ topic_description }}</h4>
+{{ render_table(calendar, titles, table_classes='table-striped', header_classes='thead-dark', body_classes='table-group-divider', caption=caption, responsive=True, responsive_class='table-responsive-sm', safe_columns=safe_columns) }}
+{% endblock %}
