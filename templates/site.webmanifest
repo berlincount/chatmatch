@@ -1,6 +1,6 @@
 {
-  "name": "{{ get_config('CHATAPP_NAME') }}",
-  "short_name": "{{ get_config('CHATAPP_SHORT_NAME') }}",
+  "name": "{{ get_config('CHATMATCH_NAME') }}",
+  "short_name": "{{ get_config('CHATMATCH_SHORT_NAME') }}",
   "icons": [
     {
       "src": "/static/android-chrome-192x192.png",
@@ -13,7 +13,7 @@
       "type": "image/png"
     }
   ],
-  "theme_color": "{{ get_config('CHATAPP_THEME_COLOR') }}",
-  "background_color": "{{ get_config('CHATAPP_BACKGROUND_COLOR') }}",
+  "theme_color": "{{ get_config('CHATMATCH_THEME_COLOR') }}",
+  "background_color": "{{ get_config('CHATMATCH_BACKGROUND_COLOR') }}",
   "display": "standalone"
 }

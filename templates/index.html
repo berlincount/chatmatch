@@ -2,8 +2,8 @@
 {% from 'bootstrap5/form.html' import render_form, render_field, render_form_row %}
 
 {% block content %}
-<h1>{{ get_config('CHATAPP_TITLE') }}</h1>
-<p>{{ get_config('CHATAPP_DESCRIPTION') }}</p>
+<h1>{{ get_config('CHATMATCH_TITLE') }}</h1>
+<p>{{ get_config('CHATMATCH_DESCRIPTION') }}</p>
 <ul>
     <li><a href="{{ url_for('topics') }}">Topics</a></li>
     <li><a href="{{ url_for('calendar') }}">Calendar</a></li>

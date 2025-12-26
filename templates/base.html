@@ -5,7 +5,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>{{ get_config('CHATAPP_TITLE') }}</title>
+    <title>{{ get_config('CHATMATCH_TITLE') }}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
@@ -14,7 +14,7 @@
     {{ bootstrap.load_css() }}
     {{ bootstrap.load_icon_font_css() }}
     <style>
-    {{ get_config('CHATAPP_CSS') }}
+    {{ get_config('CHATMATCH_CSS') }}
     </style>
 </head>
 <body>
@@ -33,7 +33,7 @@
         </div>
         </div>
     </nav>
-    
+
     <main class="container">
         {{ render_messages(container=False, dismissible=True, dismiss_animate=True) }}
         {% block content %}{% endblock %}

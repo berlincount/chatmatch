@@ -18,6 +18,8 @@ import json
 import base64
 import pprint
 import datetime
+import smtplib
+import ssl
 
 # from enum import Enum
 # from markupsafe import Markup
@@ -357,31 +359,45 @@ def favicon():
     return send_from_directory("static", "favicon.ico")
 
 
+def send_mail(recipient, message):
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(
+        os.getenv("SMTP_SERVER", "localhost"),
+        int(os.getenv("SMTP_PORT", "465")),
+        context=context,
+    ) as server:
+        server.login(
+            os.getenv("SMTP_USERNAME", "username@domain"),
+            os.getenv("SMTP_PASSWORD", "password"),
+        )
+        return server.sendmail(
+            os.getenv("SMTP_USERNAME", "username@domain"), recipient, message
+        )
+
+
 def create_app(test_config=None, debug=False):
     global app, bootstrap, db
     ## create and configure the app
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
-        # FIXME
-        SECRET_KEY="dev",
-        # FIXME
-        TESTING=True,
-        # FIXME
-        SQLALCHEMY_DATABASE_URI="sqlite:///dev.sqlite3",
-        # FIXME
-        SQLALCHEMY_ECHO=True,
-        BOOTSTRAP_BOOTSWATCH_THEME="pulse",
+        SECRET_KEY=os.getenv("SECRET_KEY", "dev"),
+        TESTING=os.getenv("TESTING"),
+        SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URI", "sqlite:///dev.sqlite3"),
+        SQLALCHEMY_ECHO=bool(os.getenv("DATABASE_ECHO")),
+        BOOTSTRAP_BOOTSWATCH_THEME=os.getenv("THEME", "pulse"),
         BOOTSTRAP_SERVE_LOCAL=True,
-        CHATAPP_NAME="ChatMatch",
-        CHATAPP_SHORT_NAME="ChatMatch",
-        CHATAPP_TITLE="ChatMatch",
-        # CHATAPP_THEME_COLOR = "#ff5555",
-        # CHATAPP_BACKGROUND_COLOR = "#5555ff",
+        CHATMATCH_NAME=os.getenv("CHATMATCH_NAME", "ChatMatch"),
+        CHATMATCH_SHORT_NAME=os.getenv(
+            "CHATMATCH_SHORT_NAME", os.getenv("CHATMATCH_NAME", "ChatMatch")
+        ),
+        CHATMATCH_TITLE=os.getenv("CHATMATCH_TITLE", "ChatMatch"),
+        CHATMATCH_THEME_COLOR=os.getenv("CHATMATCH_THEME_COLOR", "#ff5555"),
+        CHATMATCH_BACKGROUND_COLOR=os.getenv("CHATMATCH_BACKGROUND_COLOR", "#5555ff"),
     )
-    app.config["CHATAPP_DESCRIPTION"] = (
+    app.config["CHATMATCH_DESCRIPTION"] = (
         "App to match discussion participants to topics and timeslots"
     )
-    app.config["CHATAPP_CSS"] = """
+    app.config["CHATMATCH_CSS"] = """
     pre {
       background: #ddd;
       padding: 10px;
