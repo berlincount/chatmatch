@@ -240,6 +240,8 @@ def index():
               else:
                   if title[0] in values:
                     choice_id = '%s-%s-%s' % (field_id, title[0], label)
+                    if 'class' in kwargs:
+                        del kwargs['class']
                     options = dict(kwargs, name=choice_id, id=choice_id)
                     html.append('  <td><input %s /></td>\n' % html_params(**options))
                   else:
