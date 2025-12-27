@@ -2,11 +2,7 @@
 {% from 'bootstrap5/form.html' import render_form, render_field, render_form_row %}
 
 {% block content %}
-<h1>{{ get_config('CHATMATCH_TITLE') }}</h1>
+<h2>{{ get_config('CHATMATCH_TITLE') }}</h2>
 <p>{{ get_config('CHATMATCH_DESCRIPTION') }}</p>
-<ul>
-    <li><a href="{{ url_for('topics') }}">Topics</a></li>
-    <li><a href="{{ url_for('calendar') }}">Calendar</a></li>
-    <li><a href="{{ url_for('register') }}">Register User</a></li>
-</ul>
+{{ render_form(form, form_type='horizontal') }}
 {% endblock %}

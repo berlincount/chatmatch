@@ -10,6 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
 from flask_wtf import FlaskForm, CSRFProtect
 from wtforms.fields import *
+from wtforms.widgets import html_params
 from wtforms.validators import DataRequired, Length
 from sqlalchemy import ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase
@@ -68,7 +69,7 @@ class User(ChatMatch):
     email: Mapped[str]
     nick: Mapped[str]
     magic: Mapped[str]
-    newmagic: Mapped[str]
+    newmagic: Mapped[str | None]
     create_time: Mapped[int]
     edit_time: Mapped[int | None]
     lastuse_time: Mapped[int | None]
@@ -125,10 +126,6 @@ class RegisterButtonForm(FlaskForm):
     submit = SubmitField()
 
 
-def index():
-    return render_template("index.html")
-
-
 class HelloForm(FlaskForm):
     username = StringField("Username", validators=[DataRequired(), Length(1, 20)])
     password = PasswordField("Password", validators=[DataRequired(), Length(8, 150)])
@@ -139,6 +136,147 @@ class HelloForm(FlaskForm):
     )
     submit = SubmitField()
 
+def index():
+    def fetch_topics():
+        global db
+        topics = db.session.execute(
+            db.select(Topic).where(Topic.hidden == False).order_by(Topic.id)
+        )
+
+        choices = []
+        for row in topics:
+            choices.append((row.Topic.id, row.Topic.topic))
+
+        return choices
+
+    def fetch_slots():
+      # fetch Slots and Topic
+      slot_rows = db.session.execute(
+          db.select(Slot, Topic).where(Slot.topic == Topic.id, Topic.id == 1)
+      )
+
+      # collect data for calendar view
+      days = dict()
+      slots = dict()
+      topic = Topic()
+      for row in slot_rows:
+          # this will override the higher scope variable all of the time
+          topic = row.Topic
+
+          start_time = datetime.datetime.fromtimestamp(row.Slot.start_time)
+          end_time = start_time + datetime.timedelta(seconds=row.Slot.duration)
+          day = start_time.strftime("%Y%m%d")
+
+          if not day in days:
+              days[day] = dict()
+          slot = "%s-%s" % (start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
+          if slot not in slots:
+              slots[slot] = 0
+          else:
+              slots[slot] += 1
+
+          days[day][slot] = False
+
+      # pivot data into calendar structure
+      calendar = []
+      for slot in dict(sorted(slots.items())):
+          entry = dict()
+          entry["slot"] = slot
+          for day, dayslots in days.items():
+              if slot in dayslots:
+                  entry[day] = dayslots[slot]
+          calendar.append(entry)
+      #pprint.pp(calendar)
+      #pprint.pp('header-days')
+      #pprint.pp(days.keys())
+
+      # row headings
+      titles = [('slot','Slot')]
+      for day in days.keys():
+        titles.append(
+            (day, datetime.datetime.strptime(day, "%Y%m%d").strftime("%d.%m.%Y"))
+        )
+      #pprint.pp('header-titles')
+      #pprint.pp(titles)
+
+      # convert to choices structure
+      choices = [(titles,'titles')]
+      for entry in calendar:
+          slot = entry['slot']
+          del entry['slot']
+          choices.append((sorted(entry.keys()),slot))
+
+      return choices
+
+    def chatmatch_calendar_widget(field, ul_class='', **kwargs):
+        kwargs.setdefault('type', 'checkbox')
+        field_id = kwargs.pop('id', field.id)
+        #html = ['<ul %s>' % html_params(id=field_id, class_=ul_class)]
+        html = ['<div class="tables-responsive-sm">\n<table class="table table-striped" %s>\n' % html_params(id=field_id, class_=ul_class)]
+        titles = None
+        body = None
+        for values, label, checked, render_kw in field.iter_choices():
+          if not titles and label == "titles":
+              titles = values
+              html.append('<thead class="thead-dark">\n <tr>\n')
+              for title in titles:
+                html.append('  <th scope="col">%s</th>\n' % title[1])
+              html.append(' </tr>\n</thead>')
+              continue
+          if not body:
+              body = True
+              html.append('<tbody class="table-group-divider">\n')
+
+          #pprint.pp('values')
+          #pprint.pp(values)
+          #pprint.pp('label')
+          #pprint.pp(label)
+          #pprint.pp('titles')
+          #pprint.pp(titles)
+          html.append(' <tr>\n')
+          for idx,title in enumerate(titles):
+              if idx == 0:
+                  html.append('  <td>%s</td>\n' % label)
+              else:
+                  if title[0] in values:
+                    choice_id = '%s-%s-%s' % (field_id, title[0], label)
+                    options = dict(kwargs, name=choice_id, id=choice_id)
+                    html.append('  <td><input %s /></td>\n' % html_params(**options))
+                  else:
+                    html.append('  <td></td>\n')
+
+          #for idx,value in values.items():
+          #  pprint.pp('value')
+          #  pprint.pp(value)
+          #  choice_id = '%s-%s-%s' % (field_id, label, value)
+          #  options = dict(kwargs, name=field.name, value=value, id=choice_id)
+          #  if checked:
+          #    options['checked'] = 'checked'
+          #  html.append('<td> %d %s </td>' % (idx,html_params(**options)))
+          html.append(' </tr>\n')
+        if body:
+          html.append('</tbody>\n')
+        html.append('</table>\n</div>')
+        return ''.join(html)
+
+    class MainForm(FlaskForm):
+        """Our main form."""
+
+        nickname = FloatField( description="Your nickname. Will be visible to others")
+        email = FloatField( description="Your email address. Will be used to send you notifications, and nothing else")
+
+        # Topics
+        topic = SelectField(
+            choices=fetch_topics()
+        )
+
+        # Slots
+        slots = SelectMultipleField(choices=fetch_slots(), widget=chatmatch_calendar_widget)
+
+        submit = SubmitField()
+
+
+    return render_template("index.html", form=MainForm())
 
 def register():
     form = UserForm()
@@ -473,7 +611,7 @@ def create_app(test_config=None, debug=False):
         db.session.commit()
 
         # default slots (hardcoded for 39C3)
-        for day in range(27, 30):
+        for day in range(27, 30+1):
             if day == 27:
                 mintime = 13
                 maxtime = 19
