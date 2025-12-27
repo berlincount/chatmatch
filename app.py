@@ -194,7 +194,7 @@ def index():
       titles = [('slot','Slot')]
       for day in days.keys():
         titles.append(
-            (day, datetime.datetime.strptime(day, "%Y%m%d").strftime("%d.%m.%Y"))
+            (day, datetime.datetime.strptime(day, "%Y%m%d").strftime("%d.%m."))
         )
       #pprint.pp('header-titles')
       #pprint.pp(titles)
