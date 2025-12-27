@@ -4,7 +4,7 @@
 from collections import OrderedDict
 
 # from flask import Flask, render_template, send_from_directory, flash, session
-from flask import Flask, render_template, request, url_for
+from flask import Flask, render_template, request, url_for, flash, redirect
 import flask_bootstrap
 from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
@@ -262,8 +262,8 @@ def index():
     class MainForm(FlaskForm):
         """Our main form."""
 
-        nickname = FloatField( description="Your nickname. Will be visible to others")
-        email = FloatField( description="Your email address. Will be used to send you notifications, and nothing else")
+        nickname = StringField( description="Your nickname. Will be visible to others")
+        email = EmailField( description="Your email address. Will be used to send you notifications, and nothing else")
 
         # Topics
         topic = SelectField(
@@ -276,7 +276,13 @@ def index():
         submit = SubmitField()
 
 
-    return render_template("index.html", form=MainForm())
+    form = MainForm()
+    if form.validate_on_submit():
+       flash("Form submitted! Thanks! You will get an email about matches. Feel free to submit another form!")
+       pprint.pp(form)
+       return redirect(url_for("index"))
+
+    return render_template("index.html", form=form)
 
 def register():
     form = UserForm()
@@ -562,7 +568,7 @@ def create_app(test_config=None, debug=False):
     csrf = CSRFProtect(app)
     session = Session(app)
 
-    app.add_url_rule("/", "index", index)
+    app.add_url_rule("/", "index", index, methods=["GET", "POST"])
     app.add_url_rule("/register", "register", register, methods=["GET", "POST"])
     app.add_url_rule("/table", "test_table", test_table)
     app.add_url_rule("/table/<int:message_id>/view", "view_message", view_message)
