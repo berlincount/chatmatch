@@ -125,6 +125,8 @@ class Match(ChatMatch):
     confirm_time: Mapped[int | None]
     cancel_time: Mapped[int | None]
 
+    __table_args__ = (UniqueConstraint("slot", "user"),)
+
 
 class RegisterButtonForm(FlaskForm):
     submit = SubmitField()
@@ -336,11 +338,13 @@ def index():
 
         # try to load user's slots
         matches = db.session.execute(
-            db.select(Match).where(Match.user == users[0].User.id)
+            db.select(Match)
+            .where(Match.user == users[0].User.id)
+            .where(Match.cancel_time == None)
         ).all()
-        matchslots = []
+        matchslots = dict()
         for row in matches:
-            matchslots.append(row.Match.slot)
+            matchslots[row.Match.slot] = row.Match
         pprint.pp("matchslots")
         pprint.pp(matchslots)
 
@@ -352,6 +356,7 @@ def index():
         ).all()
 
         # check all slots
+        pprint.pp(formdict)
         for row in slots:
             slotstart = datetime.datetime.fromtimestamp(row.Slot.start_time)
             slotend = slotstart + datetime.timedelta(seconds=row.Slot.duration)
@@ -361,9 +366,29 @@ def index():
             )
 
             if slotname in formdict:
-                pprint.pp("ADD MATCH %s" % slotname)
-            elif row.Slot.id in matchslots:
+                if row.Slot.id in matchslots.keys():
+                    pprint.pp("EXISTING MATCH %s" % slotname)
+                else:
+                    pprint.pp("ADD MATCH %s" % slotname)
+                    match = Match()
+                    match.slot = row.Slot.id
+                    match.user = users[0].User.id
+                    match.create_time = int(datetime.datetime.now().timestamp())
+                    match.confirmed = False
+                    match.cancel_time = None
+                    db.session.add(match)
+                    db.session.commit()
+
+            elif row.Slot.id in matchslots.keys():
                 pprint.pp("REMOVE MATCH %s" % slotname)
+                db.session.query(Match).filter(
+                    Match.id == matchslots[row.Slot.id].id
+                ).update(
+                    {
+                        "cancel_time": int(datetime.datetime.now().timestamp()),
+                        "confirmed": False,
+                    }
+                )
 
         # class Slot(ChatMatch):
         #     __tablename__ = "slot_table"
