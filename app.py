@@ -13,7 +13,7 @@ from wtforms.fields import *
 from wtforms.widgets import html_params
 from wtforms.validators import DataRequired, Length
 from sqlalchemy import ForeignKey, UniqueConstraint, func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, PendingRollbackError
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped, mapped_column
 from cachelib.file import FileSystemCache
@@ -110,6 +110,8 @@ class Slot(ChatMatch):
     create_time: Mapped[int]
     editor: Mapped[int | None] = mapped_column(ForeignKey("user_table.id"))
     edit_time: Mapped[int | None]
+
+    __table_args__ = (UniqueConstraint("start_time"),)
 
 
 class Match(ChatMatch):
@@ -336,6 +338,11 @@ def index():
         matches = db.session.execute(
             db.select(Match).where(Match.user == users[0].User.id)
         ).all()
+        matchslots = []
+        for row in matches:
+            matchslots.append(row.Match.slot)
+        pprint.pp("matchslots")
+        pprint.pp(matchslots)
 
         # try to load all slots
         slots = db.session.execute(
@@ -343,11 +350,20 @@ def index():
                 Slot.topic == 1
             )  # topics[0].Topic.id) FIXME: slots are global right now
         ).all()
-        pprint.pp(slots)
 
-        for slot in slots:
-            pprint.pp(slot)
-            pprint.pp(slot.Slot.id)
+        # check all slots
+        for row in slots:
+            slotstart = datetime.datetime.fromtimestamp(row.Slot.start_time)
+            slotend = slotstart + datetime.timedelta(seconds=row.Slot.duration)
+            slotname = "slots-%s-%s" % (
+                slotstart.strftime("%Y%m%d-%H:%M"),
+                slotend.strftime("%H:%M"),
+            )
+
+            if slotname in formdict:
+                pprint.pp("ADD MATCH %s" % slotname)
+            elif row.Slot.id in matchslots:
+                pprint.pp("REMOVE MATCH %s" % slotname)
 
         # class Slot(ChatMatch):
         #     __tablename__ = "slot_table"
@@ -533,7 +549,7 @@ def calendar():
 
         if not day in days:
             days[day] = dict()
-        slot = "%s - %s" % (start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
+        slot = "%s-%s" % (start_time.strftime("%H:%M"), end_time.strftime("%H:%M"))
         if slot not in slots:
             slots[slot] = 0
         else:
@@ -687,77 +703,139 @@ def create_app(test_config=None, debug=False):
 
     with app.app_context():
         # delete database contents
-        db.drop_all()
+        if 0:
+            db.drop_all()
 
         # create database structures
-        db.create_all()
+        try:
+            db.create_all()
+        except IntegrityError, PendingRollbackError:
+            pass
 
         # system user
-        user = User()
-        user.email = "system"
-        user.nickname = "system"
-        user.magic = base64.b64encode(os.urandom(32))
-        user.create_time = int(datetime.datetime.now().timestamp())
-        db.session.add(user)
-        db.session.commit()
+        try:
+            user = User()
+            user.email = "system"
+            user.nickname = "system"
+            user.magic = base64.b64encode(os.urandom(32))
+            user.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(user)
+            db.session.commit()
+        except IntegrityError, PendingRollbackError:
+            db.session.rollback()
+            pass
 
         # default topic (hideable)
-        topic = Topic()
-        topic.topic = "Default"
-        topic.description = "This is the default topic. Usually not used."
-        topic.hidden = False
-        topic.min_users = 3
-        topic.max_users = 5
-        topic.creator = user.id
-        topic.create_time = int(datetime.datetime.now().timestamp())
-        db.session.add(topic)
-        db.session.commit()
+        try:
+            topic = Topic()
+            topic.topic = "Default"
+            topic.description = "This is the default topic. Usually not used."
+            topic.hidden = True
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Poly with (planned) kids"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Jealousy"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Transitioning to Relationship Anarchy"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Sex, safety and transparency"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Organizing calendars and time limitations"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            topic = Topic()
+            topic.topic = "Cohabitation"
+            topic.hidden = False
+            topic.min_users = 3
+            topic.max_users = 5
+            topic.creator = user.id
+            topic.create_time = int(datetime.datetime.now().timestamp())
+            db.session.add(topic)
+
+            db.session.commit()
+        except IntegrityError, PendingRollbackError:
+            db.session.rollback()
+            pass
 
         # default slots (hardcoded for 39C3)
-        for day in range(27, 30 + 1):
-            if day == 27:
-                mintime = 13
-                maxtime = 19
-            elif day == 30:
-                mintime = 11
-                maxtime = 14
-            else:
-                mintime = 11
-                maxtime = 18
+        try:
+            for day in range(27, 30 + 1):
+                if day == 27:
+                    mintime = 13
+                    maxtime = 19
+                elif day == 30:
+                    mintime = 11
+                    maxtime = 14
+                else:
+                    mintime = 11
+                    maxtime = 18
 
-            for time in range(mintime, maxtime + 1):
-                # first half hour
-                slot = Slot()
-                slot.topic = topic.id
-                slot.start_time = int(
-                    datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
-                )
-                slot.duration = 1800
-                slot.creator = user.id
-                slot.create_time = int(datetime.datetime.now().timestamp())
-                db.session.add(slot)
-
-                # second half hour
-                if not (day == 27 and time == 19):
+                for time in range(mintime, maxtime + 1):
+                    # first half hour
                     slot = Slot()
-                    slot.topic = topic.id
+                    slot.topic = 1
                     slot.start_time = int(
-                        datetime.datetime(2025, 12, day, time, 30, 0).timestamp()
+                        datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
                     )
                     slot.duration = 1800
                     slot.creator = user.id
                     slot.create_time = int(datetime.datetime.now().timestamp())
                     db.session.add(slot)
-            db.session.commit()
 
-        # test match
-        match = Match()
-        match.slot = 1
-        match.user = user.id
-        match.create_time = int(datetime.datetime.now().timestamp())
-        match.confirmed = False
-        db.session.add(match)
-        db.session.commit()
+                    # second half hour
+                    if not (day == 27 and time == 19):
+                        slot = Slot()
+                        slot.topic = 1
+                        slot.start_time = int(
+                            datetime.datetime(2025, 12, day, time, 30, 0).timestamp()
+                        )
+                        slot.duration = 1800
+                        slot.creator = user.id
+                        slot.create_time = int(datetime.datetime.now().timestamp())
+                        db.session.add(slot)
+                db.session.commit()
+        except IntegrityError, PendingRollbackError:
+            db.session.rollback()
+            pass
 
         #    - Day 1 (27.12.2025): Slots 1:00pm–7:30pm, selectable every 30 minutes
         #    - Days 2/3 (28./29.12.): 11:00am–7:00pm, every 30 minutes
@@ -786,7 +864,7 @@ def create_app(test_config=None, debug=False):
         #     if i % 4:
         #         m.draft = True
         #     db.session.add(m)
-        db.session.commit()
+        #     db.session.commit()
 
     return app
 
