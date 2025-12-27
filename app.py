@@ -13,6 +13,7 @@ from wtforms.fields import *
 from wtforms.widgets import html_params
 from wtforms.validators import DataRequired, Length
 from sqlalchemy import ForeignKey, UniqueConstraint, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped, mapped_column
 from cachelib.file import FileSystemCache
@@ -68,7 +69,7 @@ class User(ChatMatch):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str]
-    nick: Mapped[str]
+    nickname: Mapped[str]
     magic: Mapped[str]
     newmagic: Mapped[str | None]
     create_time: Mapped[int]
@@ -77,7 +78,7 @@ class User(ChatMatch):
 
     __table_args__ = (
         UniqueConstraint("email"),
-        UniqueConstraint("nick"),
+        UniqueConstraint("nickname"),
     )
 
 
@@ -210,6 +211,8 @@ def fetch_slots():
 
 
 def index():
+    global db
+
     def chatmatch_calendar_widget(field, ul_class="", **kwargs):
         kwargs.setdefault("type", "checkbox")
         field_id = kwargs.pop("id", field.id)
@@ -287,10 +290,92 @@ def index():
 
     form = MainForm()
     if form.validate_on_submit():
+        formdict = request.form.to_dict()
+        # try to load user
+        users = db.session.execute(
+            db.select(User)
+            .where(User.nickname == formdict["nickname"])
+            .where(User.email == formdict["email"])
+        ).all()
+        # create user if it doesn't exist
+        if not len(users):
+            try:
+                user = User()
+                user.nickname = formdict["nickname"]
+                user.email = formdict["email"]
+                user.magic = base64.b64encode(os.urandom(32))
+                user.create_time = int(datetime.datetime.now().timestamp())
+                db.session.add(user)
+                db.session.commit()
+            except IntegrityError:
+                flash(
+                    "Either the nickname or the email address exist already - and don't match! Sorry.",
+                    "danger",
+                )
+                return redirect(url_for("index"))
+
+            # load users again
+            users = db.session.execute(
+                db.select(User)
+                .where(User.nickname == formdict["nickname"])
+                .where(User.email == formdict["email"])
+            ).all()
+
+        # try to load topic
+        topics = db.session.execute(
+            db.select(Topic).where(Topic.id == int(formdict["topic"]))
+        ).all()
+        if len(topics) != 1:
+            flash(
+                "Something went wrong finding the topic! Sorry.",
+                "danger",
+            )
+            return redirect(url_for("index"))
+
+        # try to load user's slots
+        matches = db.session.execute(
+            db.select(Match).where(Match.user == users[0].User.id)
+        ).all()
+
+        # try to load all slots
+        slots = db.session.execute(
+            db.select(Slot).where(
+                Slot.topic == 1
+            )  # topics[0].Topic.id) FIXME: slots are global right now
+        ).all()
+        pprint.pp(slots)
+
+        for slot in slots:
+            pprint.pp(slot)
+            pprint.pp(slot.Slot.id)
+
+        # class Slot(ChatMatch):
+        #     __tablename__ = "slot_table"
+        #
+        #     id: Mapped[int] = mapped_column(primary_key=True)
+        #     topic: Mapped[int] = mapped_column(ForeignKey("topic_table.id"))
+        #     start_time: Mapped[int]
+        #     duration: Mapped[int]
+        #     creator: Mapped[int] = mapped_column(ForeignKey("user_table.id"))
+        #     create_time: Mapped[int]
+        #     editor: Mapped[int | None] = mapped_column(ForeignKey("user_table.id"))
+        #     edit_time: Mapped[int | None]
+
+        # class Match(ChatMatch):
+        #    __tablename__ = "match_table"
+        #
+        #    id: Mapped[int] = mapped_column(primary_key=True)
+        #    slot: Mapped[int] = mapped_column(ForeignKey("slot_table.id"))
+        #    user: Mapped[int] = mapped_column(ForeignKey("user_table.id"))
+        #    create_time: Mapped[int]
+        #    confirmed: Mapped[bool]
+        #    confirm_time: Mapped[int | None]
+        #    cancel_time: Mapped[int | None]
+
         flash(
-            "Form submitted! Thanks! You will get an email about matches. Feel free to submit another form!"
+            "Form submitted! Thanks! You will get an email about matches. Feel free to submit another form!",
+            "success",
         )
-        pprint.pp(request.form.to_dict(flat=False))
         return redirect(url_for("index"))
 
     return render_template("index.html", form=form)
@@ -610,7 +695,7 @@ def create_app(test_config=None, debug=False):
         # system user
         user = User()
         user.email = "system"
-        user.nick = "system"
+        user.nickname = "system"
         user.magic = base64.b64encode(os.urandom(32))
         user.create_time = int(datetime.datetime.now().timestamp())
         db.session.add(user)
