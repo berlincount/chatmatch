@@ -421,8 +421,6 @@ def index():
                 recalc = True
 
         db.session.commit()
-        if recalc:
-            recalc_topic(topics[0].Topic.id)
 
         # class Slot(ChatMatch):
         #     __tablename__ = "slot_table"
@@ -452,6 +450,9 @@ def index():
             "success",
         )
         send_topic_mail(users[0].User, topics[0].Topic)
+
+        if recalc:
+            recalc_topic(topics[0].Topic.id)
 
         return redirect(url_for("index"))
 
@@ -522,27 +523,29 @@ def recalc_topic(topic_id):
 
         # check whether we need to confirm
         for slot_id in matchslots.keys():
-            print(" - slot %d - %d matches" % (slot_id, len(matchslots[slot_id])))
             if len(matchslots[slot_id]) >= topic.min_users:
-                confirmed = 0
+                confirm_previous = []
                 confirm_pending = []
                 for match in matchslots[slot_id]:
                     if match.confirmed:
-                        confirmed += 1
+                        confirm_previous.append(match.id)
                     else:
-                        if (confirmed + len(confirm_pending)) < topic.max_users:
+                        if (
+                            len(confirm_previous) + len(confirm_pending)
+                        ) < topic.max_users:
                             print(
                                 "✅✅ RECALC TOPIC %d: Mail user %d about slot %d"
                                 % (topic_id, match.user, slot_id)
                             )
-                            confirm_pending.append(match)
+                            confirm_pending.append(match.id)
 
-                send_slot_mail(user, slot, confirm_pending)
+                send_slot_mail(slot, topic, confirm_previous, confirm_pending)
 
     return True
 
 
 def send_topic_mail(user, topic):
+    global db
     slots = db.session.execute(
         db.select(Match, Slot)
         .filter(Match.slot == Slot.id)
@@ -557,7 +560,7 @@ Hi Relationship Geek!
 
 You've signed up for a conversation about %s for the following time slots:
 
-""" % ('"'+topic.topic+'"',)
+""" % ('"' + topic.topic + '"',)
 
     slot_id = None
     for match, slot in slots:
@@ -565,7 +568,10 @@ You've signed up for a conversation about %s for the following time slots:
             slot_id = slot.id
             start_time = datetime.datetime.fromtimestamp(slot.start_time)
             end_time = start_time + datetime.timedelta(seconds=slot.duration)
-            message += "%s-%s\n" % (start_time.strftime("%d.%m.%Y %H:%M"), end_time.strftime("%H:%M"))
+            message += "%s-%s\n" % (
+                start_time.strftime("%d.%m.%Y %H:%M"),
+                end_time.strftime("%H:%M"),
+            )
 
     message += """
 As soon as at least %d (max %d) people have signed up for a conversation about this topic for one of the time above time slots we'll send you another message to confirm the conversation is happening!
@@ -573,29 +579,87 @@ As soon as at least %d (max %d) people have signed up for a conversation about t
 If nobody signs up for the same topic & time slot you won't receive further messages.
 """ % (topic.min_users, topic.max_users)
 
-    print("RECIPIENT")
-    print(user.email)
-    print("STARTMESSAGE")
-    print(message)
-    print("ENDMESSAGE")
-    # send_mail(recipient, message)
+    if app.debug:
+        print("RECIPIENT")
+        print(user.email)
+        print("STARTMESSAGE")
+        print(message)
+        print("ENDMESSAGE")
+    else:
+        send_mail(user.email, message)
 
 
-def send_slot_mail(slot_id, confirm_pending):
-    pprint.pp("PENDING slot_id %d" % slot_id)
-    pprint.pp(confirm_pending)
+def send_slot_mail(slot, topic, confirm_previous, confirm_pending):
+    global db
+    users = db.session.execute(
+        db.select(User, Match)
+        .filter(Match.slot == slot.id)
+        .filter(User.id == Match.user)
+        .order_by(User.nickname)
+    ).all()
 
-    # send_slot_mail(slot_id)
-    # db.session.query(Match).filter(
-    #    Match.id == matchslots[row.Slot.id].id
-    # ).update(
-    #    {
-    #        "confirmed": True,
-    #        "confirm_time": now,
-    #        "edit_time": now,
-    #        "cancel_time": None,
-    #    }
-    # )
+    if not len(users):
+        print("❎❎❎ SLOT MAIL %d UNSUCCESSFUL - No users found?" % slot.id)
+        return False
+
+    now = int(datetime.datetime.now().timestamp())
+
+    # collect nicknames
+    nicknames = []
+    for user, match in users:
+        if match.id in confirm_previous or match.id in confirm_pending:
+            nicknames.append(user.nickname)
+    if app.debug:
+        pprint.pp(nicknames)
+
+    message = """From: Relationship Geeks Matching Service
+Subject: Conversation matched!
+
+Hi Relationship Geek!
+
+You've signed up for a conversation about %s, and we've found matches!
+
+""" % ('"' + topic.topic + '"',)
+
+    message += "Timeslot: "
+
+    start_time = datetime.datetime.fromtimestamp(slot.start_time)
+    end_time = start_time + datetime.timedelta(seconds=slot.duration)
+    message += "%s-%s\n" % (
+        start_time.strftime("%d.%m.%Y %H:%M"),
+        end_time.strftime("%H:%M"),
+    )
+
+    message += """
+You will be meeting with the following list of people at the Relationship Geeks assembly - please find a spot to discuss at by yourself:
+
+"""
+    message += "\n".join(nicknames)
+    message += """
+
+Have a lot of fun!
+"""
+
+    for user, match in users:
+        if match.id in confirm_pending and not match.confirmed:
+            if app.debug:
+                print("RECIPIENT")
+                print(user.email)
+                print("STARTMESSAGE")
+                print(message)
+                print("ENDMESSAGE")
+            else:
+                send_mail(recipient, message)
+
+                db.session.query(Match).filter(Match.id == match.id).update(
+                    {
+                        "confirmed": True,
+                        "confirm_time": now,
+                        "edit_time": now,
+                        "cancel_time": None,
+                    }
+                )
+    db.session.commit()
 
 
 def register():
