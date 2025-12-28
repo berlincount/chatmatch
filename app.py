@@ -122,6 +122,7 @@ class Match(ChatMatch):
     user: Mapped[int] = mapped_column(ForeignKey("user_table.id"))
     create_time: Mapped[int]
     confirmed: Mapped[bool]
+    edit_time: Mapped[int | None]
     confirm_time: Mapped[int | None]
     cancel_time: Mapped[int | None]
 
@@ -312,11 +313,13 @@ def index():
                 db.session.add(user)
                 db.session.commit()
             except IntegrityError:
+                print("❎ DUPLICATE USER %s" % formdict["nickname"])
                 flash(
                     "Either the nickname or the email address exist already - and don't match! Sorry.",
                     "danger",
                 )
                 return redirect(url_for("index"))
+            print("✅ ADD USER %s" % formdict["nickname"])
 
             # load users again
             users = db.session.execute(
@@ -338,15 +341,14 @@ def index():
 
         # try to load user's slots
         matches = db.session.execute(
-            db.select(Match)
-            .where(Match.user == users[0].User.id)
-            .where(Match.cancel_time == None)
+            db.select(Match).where(Match.user == users[0].User.id)
         ).all()
         matchslots = dict()
         for row in matches:
             matchslots[row.Match.slot] = row.Match
-        pprint.pp("matchslots")
-        pprint.pp(matchslots)
+        if app.debug:
+            pprint.pp("matchslots")
+            pprint.pp(matchslots)
 
         # try to load all slots
         slots = db.session.execute(
@@ -355,8 +357,11 @@ def index():
             )  # topics[0].Topic.id) FIXME: slots are global right now
         ).all()
 
+        # Do we need to recalc the Matches?
+        recalc = False
         # check all slots
-        pprint.pp(formdict)
+        if app.debug:
+            pprint.pp(formdict)
         for row in slots:
             slotstart = datetime.datetime.fromtimestamp(row.Slot.start_time)
             slotend = slotstart + datetime.timedelta(seconds=row.Slot.duration)
@@ -367,9 +372,23 @@ def index():
 
             if slotname in formdict:
                 if row.Slot.id in matchslots.keys():
-                    pprint.pp("EXISTING MATCH %s" % slotname)
+                    if not matchslots[row.Slot.id].cancel_time:
+                        print("✅ EXISTING MATCH %s" % slotname)
+                    else:
+                        print("✅ UNCANCEL MATCH %s" % slotname)
+                        db.session.query(Match).filter(
+                            Match.id == matchslots[row.Slot.id].id
+                        ).update(
+                            {
+                                "confirmed": False,
+                                "confirm_time": None,
+                                "edit_time": int(datetime.datetime.now().timestamp()),
+                                "cancel_time": None,
+                            }
+                        )
+                        recalc = True
                 else:
-                    pprint.pp("ADD MATCH %s" % slotname)
+                    print("✅ ADD MATCH %s" % slotname)
                     match = Match()
                     match.slot = row.Slot.id
                     match.user = users[0].User.id
@@ -377,18 +396,24 @@ def index():
                     match.confirmed = False
                     match.cancel_time = None
                     db.session.add(match)
-                    db.session.commit()
+                    recalc = True
 
             elif row.Slot.id in matchslots.keys():
-                pprint.pp("REMOVE MATCH %s" % slotname)
+                print("✅ CANCEL MATCH %s" % slotname)
                 db.session.query(Match).filter(
                     Match.id == matchslots[row.Slot.id].id
                 ).update(
                     {
-                        "cancel_time": int(datetime.datetime.now().timestamp()),
                         "confirmed": False,
+                        "edit_time": int(datetime.datetime.now().timestamp()),
+                        "cancel_time": int(datetime.datetime.now().timestamp()),
                     }
                 )
+                recalc = True
+
+        db.session.commit()
+        if recalc:
+            recalc_topic(topics[0].Topic.id)
 
         # class Slot(ChatMatch):
         #     __tablename__ = "slot_table"
@@ -420,6 +445,11 @@ def index():
         return redirect(url_for("index"))
 
     return render_template("index.html", form=form)
+
+
+def recalc_topic(topid_id):
+    # FIXME
+    print("❎❎❎ RECALC NOT DONE")
 
 
 def register():
@@ -518,7 +548,7 @@ def calendar():
         db.select(Match).where(Match.slot == Slot.id, Slot.topic == topic_id)
     )
     if app.debug and 0:
-        print(topic_id)
+        pprint.pp(topic_id)
         pprint.pp(match_rows)
 
     # prepare matches
