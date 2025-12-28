@@ -4,7 +4,16 @@
 from collections import OrderedDict
 
 # from flask import Flask, render_template, send_from_directory, flash, session
-from flask import Flask, render_template, request, url_for, flash, redirect, request
+from flask import (
+    Flask,
+    render_template,
+    request,
+    url_for,
+    flash,
+    redirect,
+    request,
+    jsonify,
+)
 import flask_bootstrap
 from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
@@ -111,7 +120,7 @@ class Slot(ChatMatch):
     editor: Mapped[int | None] = mapped_column(ForeignKey("user_table.id"))
     edit_time: Mapped[int | None]
 
-    __table_args__ = (UniqueConstraint("start_time"),)
+    __table_args__ = (UniqueConstraint("start_time", "topic"),)
 
 
 class Match(ChatMatch):
@@ -159,10 +168,10 @@ def fetch_topics():
 
 
 @lru_cache(maxsize=16)
-def fetch_slots():
+def fetch_slots(topic_id):
     # fetch Slots and Topic
     slot_rows = db.session.execute(
-        db.select(Slot, Topic).where(Slot.topic == Topic.id, Topic.id == 1)
+        db.select(Slot, Topic).where(Slot.topic == Topic.id, Topic.id == topic_id)
     )
 
     # collect data for calendar view
@@ -288,7 +297,9 @@ def index():
 
         # Slots
         slots = SelectMultipleField(
-            choices=fetch_slots(), widget=chatmatch_calendar_widget
+            # FIXME slots are loaded from first, hidden topic
+            choices=fetch_slots(1),
+            widget=chatmatch_calendar_widget,
         )
 
         submit = SubmitField()
@@ -352,9 +363,7 @@ def index():
 
         # try to load all slots
         slots = db.session.execute(
-            db.select(Slot).where(
-                Slot.topic == 1
-            )  # topics[0].Topic.id) FIXME: slots are global right now
+            db.select(Slot).where(Slot.topic == topics[0].Topic.id)
         ).all()
 
         # Do we need to recalc the Matches?
@@ -439,17 +448,154 @@ def index():
         #    cancel_time: Mapped[int | None]
 
         flash(
-            "Form submitted! Thanks! You will get an email about matches. Feel free to submit another form!",
+            "Form submitted! Thanks! You will get a confirmation email. Feel free to submit another form!",
             "success",
         )
+        send_topic_mail(users[0].User, topics[0].Topic)
+
         return redirect(url_for("index"))
 
     return render_template("index.html", form=form)
 
 
-def recalc_topic(topid_id):
-    # FIXME
-    print("❎❎❎ RECALC NOT DONE")
+def recalc_all_topics():
+    topics = db.session.execute(
+        db.select(Topic).where(Topic.hidden == False).order_by(Topic.id)
+    )
+    results = dict()
+    for row in topics:
+        results[row.Topic.id] = recalc_topic(row.Topic.id)
+
+    return jsonify(results)
+
+
+def recalc_topic(topic_id):
+    global db
+
+    print("✅ RECALC TOPIC %d" % topic_id)
+
+    # try to load topic
+    topics = db.session.execute(db.select(Topic).where(Topic.id == topic_id)).all()
+    if len(topics) != 1:
+        print(
+            "❎❎❎ RECALC TOPIC %d FAILURE - Not exactly one topic found?" % topic_id
+        )
+        return False
+    topic = topics[0].Topic
+
+    # try to load slots
+    slots = db.session.execute(
+        db.select(Slot).where(Slot.topic == topics[0].Topic.id)
+    ).all()
+    if not len(slots):
+        print("❎❎❎ RECALC TOPIC %d FAILURE - No slots found?" % topic_id)
+        return False
+
+    # try to load matches
+    matches = db.session.execute(
+        db.select(Match, Slot)
+        .filter(Match.slot == Slot.id)
+        .filter(Slot.topic == topic_id)
+        .order_by(Match.slot, Slot.start_time, Match.create_time)
+    ).all()
+    if not len(matches):
+        print("❎❎❎ RECALC TOPIC %d UNSUCCESSFUL - No matches found?" % topic_id)
+        return False
+    else:
+        print("✅ RECALC TOPIC %d - %d matches" % (topic_id, len(matches)))
+
+        now = int(datetime.datetime.now().timestamp())
+
+        # collect matches by slot
+        matchslots = dict()
+        slot_id = None
+        for match, slot in matches:
+            # skip slots already past/started
+            if slot.start_time <= now:
+                continue
+
+            if slot_id != slot.id:
+                matchslots[slot.id] = []
+                slot_id = slot.id
+            if not match.cancel_time:
+                matchslots[slot.id].append(match)
+
+        # check whether we need to confirm
+        for slot_id in matchslots.keys():
+            print(" - slot %d - %d matches" % (slot_id, len(matchslots[slot_id])))
+            if len(matchslots[slot_id]) >= topic.min_users:
+                confirmed = 0
+                confirm_pending = []
+                for match in matchslots[slot_id]:
+                    if match.confirmed:
+                        confirmed += 1
+                    else:
+                        if (confirmed + len(confirm_pending)) < topic.max_users:
+                            print(
+                                "✅✅ RECALC TOPIC %d: Mail user %d about slot %d"
+                                % (topic_id, match.user, slot_id)
+                            )
+                            confirm_pending.append(match)
+
+                send_slot_mail(user, slot, confirm_pending)
+
+    return True
+
+
+def send_topic_mail(user, topic):
+    slots = db.session.execute(
+        db.select(Match, Slot)
+        .filter(Match.slot == Slot.id)
+        .filter(Slot.topic == topic.id)
+        .order_by(Match.slot, Slot.start_time, Match.create_time)
+    ).all()
+
+    message = """From: Relationship Geeks Matching Service
+Subject: You've signed up for a conversation
+
+Hi Relationship Geek!
+
+You've signed up for a conversation about %s for the following time slots:
+
+""" % ('"'+topic.topic+'"',)
+
+    slot_id = None
+    for match, slot in slots:
+        if slot.id != slot_id:
+            slot_id = slot.id
+            start_time = datetime.datetime.fromtimestamp(slot.start_time)
+            end_time = start_time + datetime.timedelta(seconds=slot.duration)
+            message += "%s-%s\n" % (start_time.strftime("%d.%m.%Y %H:%M"), end_time.strftime("%H:%M"))
+
+    message += """
+As soon as at least %d (max %d) people have signed up for a conversation about this topic for one of the time above time slots we'll send you another message to confirm the conversation is happening!
+
+If nobody signs up for the same topic & time slot you won't receive further messages.
+""" % (topic.min_users, topic.max_users)
+
+    print("RECIPIENT")
+    print(user.email)
+    print("STARTMESSAGE")
+    print(message)
+    print("ENDMESSAGE")
+    # send_mail(recipient, message)
+
+
+def send_slot_mail(slot_id, confirm_pending):
+    pprint.pp("PENDING slot_id %d" % slot_id)
+    pprint.pp(confirm_pending)
+
+    # send_slot_mail(slot_id)
+    # db.session.query(Match).filter(
+    #    Match.id == matchslots[row.Slot.id].id
+    # ).update(
+    #    {
+    #        "confirmed": True,
+    #        "confirm_time": now,
+    #        "edit_time": now,
+    #        "cancel_time": None,
+    #    }
+    # )
 
 
 def register():
@@ -737,21 +883,17 @@ def create_app(test_config=None, debug=False):
     session = Session(app)
 
     app.add_url_rule("/", "index", index, methods=["GET", "POST"])
-    app.add_url_rule("/register", "register", register, methods=["GET", "POST"])
-    app.add_url_rule("/table", "test_table", test_table)
-    app.add_url_rule("/table/<int:message_id>/view", "view_message", view_message)
-    app.add_url_rule("/slot/<int:slot_id>", "slot_form", slot_form)
-    app.add_url_rule("/table/<int:message_id>/edit", "edit_message", edit_message)
-    app.add_url_rule(
-        "/table/<int:message_id>/delete",
-        "delete_message",
-        delete_message,
-        methods=["POST"],
-    )
-    app.add_url_rule("/table/<int:message_id>/like", "like_message", like_message)
-    app.add_url_rule("/table/new-message", "new_message", new_message)
-    app.add_url_rule("/topics", "topics", topics)
-    app.add_url_rule("/calendar", "calendar", calendar)
+    app.add_url_rule("/recalc_all_topics", "recalc_all_topics", recalc_all_topics)
+    # app.add_url_rule("/register", "register", register, methods=["GET", "POST"])
+    # app.add_url_rule("/table", "test_table", test_table)
+    # app.add_url_rule("/table/<int:message_id>/view", "view_message", view_message)
+    # app.add_url_rule("/slot/<int:slot_id>", "slot_form", slot_form)
+    # app.add_url_rule("/table/<int:message_id>/edit", "edit_message", edit_message)
+    # app.add_url_rule( "/table/<int:message_id>/delete", "delete_message", delete_message, methods=["POST"],)
+    # app.add_url_rule("/table/<int:message_id>/like", "like_message", like_message)
+    # app.add_url_rule("/table/new-message", "new_message", new_message)
+    # app.add_url_rule("/topics", "topics", topics)
+    # app.add_url_rule("/calendar", "calendar", calendar)
     app.add_url_rule("/admin", "admin", admin)
     app.add_url_rule("/site.webmanifest", "site_webmanifest", site_webmanifest)
     app.add_url_rule("/favicon.ico", "favicon", favicon)
@@ -852,45 +994,49 @@ def create_app(test_config=None, debug=False):
             pass
 
         # default slots (hardcoded for 39C3)
-        try:
-            for day in range(27, 30 + 1):
-                if day == 27:
-                    mintime = 13
-                    maxtime = 19
-                elif day == 30:
-                    mintime = 11
-                    maxtime = 14
-                else:
-                    mintime = 11
-                    maxtime = 18
+        maxtopic = db.session.query(func.max(Topic.id)).all()[0][0]
+        for topic in range(1, maxtopic + 1):
+            try:
+                for day in range(27, 30 + 1):
+                    if day == 27:
+                        mintime = 13
+                        maxtime = 19
+                    elif day == 30:
+                        mintime = 11
+                        maxtime = 14
+                    else:
+                        mintime = 11
+                        maxtime = 18
 
-                for time in range(mintime, maxtime + 1):
-                    # first half hour
-                    slot = Slot()
-                    slot.topic = 1
-                    slot.start_time = int(
-                        datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
-                    )
-                    slot.duration = 1800
-                    slot.creator = user.id
-                    slot.create_time = int(datetime.datetime.now().timestamp())
-                    db.session.add(slot)
-
-                    # second half hour
-                    if not (day == 27 and time == 19):
+                    for time in range(mintime, maxtime + 1):
+                        # first half hour
                         slot = Slot()
-                        slot.topic = 1
+                        slot.topic = topic
                         slot.start_time = int(
-                            datetime.datetime(2025, 12, day, time, 30, 0).timestamp()
+                            datetime.datetime(2025, 12, day, time, 0, 0).timestamp()
                         )
                         slot.duration = 1800
                         slot.creator = user.id
                         slot.create_time = int(datetime.datetime.now().timestamp())
                         db.session.add(slot)
-                db.session.commit()
-        except IntegrityError, PendingRollbackError:
-            db.session.rollback()
-            pass
+
+                        # second half hour
+                        if not (day == 27 and time == 19):
+                            slot = Slot()
+                            slot.topic = topic
+                            slot.start_time = int(
+                                datetime.datetime(
+                                    2025, 12, day, time, 30, 0
+                                ).timestamp()
+                            )
+                            slot.duration = 1800
+                            slot.creator = user.id
+                            slot.create_time = int(datetime.datetime.now().timestamp())
+                            db.session.add(slot)
+                    db.session.commit()
+            except IntegrityError, PendingRollbackError:
+                db.session.rollback()
+                pass
 
         #    - Day 1 (27.12.2025): Slots 1:00pm–7:30pm, selectable every 30 minutes
         #    - Days 2/3 (28./29.12.): 11:00am–7:00pm, every 30 minutes
