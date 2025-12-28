@@ -758,7 +758,7 @@ def create_app(test_config=None, debug=False):
 
     with app.app_context():
         # delete database contents
-        if 0:
+        if bool(os.getenv("DANGER_DROP_DATABASE")):
             db.drop_all()
 
         # create database structures
