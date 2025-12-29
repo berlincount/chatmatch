@@ -556,14 +556,15 @@ def send_topic_mail(user, topic):
         .order_by(Match.slot, Slot.start_time, Match.create_time)
     ).all()
 
-    message = """From: Relationship Geeks Matching Service
+    message = """To: %s <%s>
+From: Relationship Geeks Matching Service
 Subject: You've signed up for a conversation
 
 Hi Relationship Geek!
 
 You've signed up for a conversation about %s for the following time slots:
 
-""" % ('"' + topic.topic + '"',)
+""" % (User.nickname, User.email, '"' + topic.topic + '"')
 
     slot_id = None
     for match, slot in slots:
@@ -654,6 +655,7 @@ Have a lot of fun!
                 print(message)
                 print("ENDMESSAGE")
             else:
+                message = ("To: %s <%s>" % (user.nickname, user.email)) + message
                 send_mail(user.email, message)
 
                 db.session.query(Match).filter(Match.id == match.id).update(
