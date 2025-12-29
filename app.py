@@ -550,7 +550,6 @@ def send_topic_mail(user, topic):
     global db
     slots = db.session.execute(
         db.select(Match, Slot)
-        .filter(Match.cancel_time == None)
         .filter(Match.slot == Slot.id)
         .filter(Match.user == user.id)
         .filter(Slot.topic == topic.id)
@@ -572,10 +571,11 @@ You've signed up for a conversation about %s for the following time slots:
             slot_id = slot.id
             start_time = datetime.datetime.fromtimestamp(slot.start_time)
             end_time = start_time + datetime.timedelta(seconds=slot.duration)
-            message += "%s-%s\n" % (
-                start_time.strftime("%d.%m.%Y %H:%M"),
-                end_time.strftime("%H:%M"),
-            )
+            if not match.cancel_time:
+                message += "%s-%s\n" % (
+                    start_time.strftime("%d.%m.%Y %H:%M"),
+                    end_time.strftime("%H:%M"),
+                )
 
     message += """
 As soon as at least %d (max %d) people have signed up for a conversation about this topic for one of the time above time slots we'll send you another message to confirm the conversation is happening!
@@ -654,7 +654,7 @@ Have a lot of fun!
                 print(message)
                 print("ENDMESSAGE")
             else:
-                send_mail(recipient, message)
+                send_mail(user.email, message)
 
                 db.session.query(Match).filter(Match.id == match.id).update(
                     {
