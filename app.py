@@ -564,7 +564,7 @@ Hi Relationship Geek!
 
 You've signed up for a conversation about %s for the following time slots:
 
-""" % (User.nickname, User.email, '"' + topic.topic + '"')
+""" % (user.nickname, user.email, '"' + topic.topic + '"')
 
     slot_id = None
     for match, slot in slots:
