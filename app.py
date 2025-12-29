@@ -549,6 +549,7 @@ def send_topic_mail(user, topic):
     global db
     slots = db.session.execute(
         db.select(Match, Slot)
+        .filter(Match.cancel_time == None)
         .filter(Match.slot == Slot.id)
         .filter(Slot.topic == topic.id)
         .order_by(Match.slot, Slot.start_time, Match.create_time)
