@@ -333,13 +333,20 @@ def index():
                 return redirect(url_for("index"))
             print("✅ ADD USER %s" % formdict["nickname"])
 
-            # load users again
-            users = db.session.execute(
-                db.select(User)
-                .where(User.nickname == formdict["nickname"])
-                .where(User.email == formdict["email"])
-            ).all()
+        # load users again
+        users = db.session.execute(
+            db.select(User)
+            .where(User.nickname == formdict["nickname"])
+            .where(User.email == formdict["email"])
+        ).all()
         user = users[0].User
+        if not len(users):
+            print("❎ COULD NOT (RE)LOAD USER %s" % formdict["nickname"])
+            flash(
+                "Loading user failed for some odd reason. Sorry.",
+                "danger",
+            )
+            return redirect(url_for("index"))
 
         # try to load topic
         topics = db.session.execute(
