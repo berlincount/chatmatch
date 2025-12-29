@@ -637,7 +637,7 @@ You've signed up for a conversation about %s, and we've found matches!
     )
 
     message += """
-You will be meeting with the following list of people at the Relationship Geeks assembly - please find a spot to discuss at by yourself:
+You will be meeting with the following list of people at the Relationship Geeks assembly - if there is no space at the assembly please find one yourselves.
 
 """
     message += "\n".join(nicknames)
