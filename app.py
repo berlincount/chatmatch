@@ -339,6 +339,7 @@ def index():
                 .where(User.nickname == formdict["nickname"])
                 .where(User.email == formdict["email"])
             ).all()
+        user = users[0].User
 
         # try to load topic
         topics = db.session.execute(
@@ -350,10 +351,11 @@ def index():
                 "danger",
             )
             return redirect(url_for("index"))
+        topic = topics[0].Topic
 
         # try to load user's slots
         matches = db.session.execute(
-            db.select(Match).where(Match.user == users[0].User.id)
+            db.select(Match).where(Match.user == user.id)
         ).all()
         matchslots = dict()
         for row in matches:
@@ -363,9 +365,7 @@ def index():
             pprint.pp(matchslots)
 
         # try to load all slots
-        slots = db.session.execute(
-            db.select(Slot).where(Slot.topic == topics[0].Topic.id)
-        ).all()
+        slots = db.session.execute(db.select(Slot).where(Slot.topic == topic.id)).all()
 
         # Do we need to recalc the Matches?
         recalc = False
@@ -402,7 +402,7 @@ def index():
                     print("✅ ADD MATCH %s" % slotname)
                     match = Match()
                     match.slot = row.Slot.id
-                    match.user = users[0].User.id
+                    match.user = user.id
                     match.create_time = int(datetime.datetime.now().timestamp())
                     match.confirmed = False
                     match.cancel_time = None
@@ -451,7 +451,7 @@ def index():
             "Form submitted! Thanks! You will get a confirmation email. Feel free to submit another form!",
             "success",
         )
-        send_topic_mail(users[0].User, topics[0].Topic)
+        send_topic_mail(user, topic)
 
         if recalc:
             recalc_topic(topics[0].Topic.id)
@@ -552,6 +552,7 @@ def send_topic_mail(user, topic):
         db.select(Match, Slot)
         .filter(Match.cancel_time == None)
         .filter(Match.slot == Slot.id)
+        .filter(Match.user == user.id)
         .filter(Slot.topic == topic.id)
         .order_by(Match.slot, Slot.start_time, Match.create_time)
     ).all()
