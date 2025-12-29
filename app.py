@@ -625,6 +625,10 @@ def send_slot_mail(slot, topic, confirm_previous, confirm_pending):
         print("NICKNAMES")
         pprint.pp(nicknames)
 
+    if not len(nicknames):
+        print("❎❎❎ SLOT MAIL %d UNSUCCESSFUL - Nicknames not collected?" % slot.id)
+        return False
+
     message = """From: Relationship Geeks Matching Service
 Subject: Conversation matched!
 
