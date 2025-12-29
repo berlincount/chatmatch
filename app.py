@@ -357,7 +357,7 @@ def index():
         matchslots = dict()
         for row in matches:
             matchslots[row.Match.slot] = row.Match
-        if app.debug:
+        if app.debug and 0:
             pprint.pp("matchslots")
             pprint.pp(matchslots)
 
@@ -370,6 +370,7 @@ def index():
         recalc = False
         # check all slots
         if app.debug:
+            print("FORMDICT")
             pprint.pp(formdict)
         for row in slots:
             slotstart = datetime.datetime.fromtimestamp(row.Slot.start_time)
@@ -610,6 +611,7 @@ def send_slot_mail(slot, topic, confirm_previous, confirm_pending):
         if match.id in confirm_previous or match.id in confirm_pending:
             nicknames.append(user.nickname)
     if app.debug:
+        print("NICKNAMES")
         pprint.pp(nicknames)
 
     message = """From: Relationship Geeks Matching Service
@@ -885,6 +887,7 @@ def favicon():
 
 
 def send_mail(recipient, message):
+    print("SENDING MAIL TO %s" % recipient)
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(
         os.getenv("SMTP_SERVER", "localhost"),
