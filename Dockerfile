@@ -8,4 +8,4 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/uv --mount=from=uv,source=/uv,target=./uv ./uv pip install -r requirements.txt
 COPY . .
 EXPOSE 8080
-CMD ["gunicorn", "--logfile=-", "--bind=0.0.0.0:8080", "app:create_app()"]
+CMD ["gunicorn", "--log-file=-", "--capture-output", "--bind=0.0.0.0:8080", "app:create_app()"]
