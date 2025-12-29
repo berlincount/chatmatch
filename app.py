@@ -655,7 +655,7 @@ Have a lot of fun!
                 print(message)
                 print("ENDMESSAGE")
             else:
-                message = ("To: %s <%s>" % (user.nickname, user.email)) + message
+                message = ("To: %s <%s>\n" % (user.nickname, user.email)) + message
                 send_mail(user.email, message)
 
                 db.session.query(Match).filter(Match.id == match.id).update(
